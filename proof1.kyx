@@ -1,0 +1,97 @@
+﻿/* Exported from KeYmaera X v4.9.5 */
+
+Theorem "starlab-draft1"
+
+Definitions
+  Real maxVp; /* max poacher velocity */
+  Real maxVr; /* max ranger velocity */
+  Real maxVt; /* max target velocity */
+  
+  Real killr; /* how close poacher should be to kill target */
+  Real capr; /* how close ranger should be to catch poacher */
+  Real T; /* ranger shifts */
+  
+  /* functions */
+  Real distancesq(Real x1, Real x2, Real y1, Real y2) = (x2-x1)^2 + (y2-y1)^2;
+  
+  /* Hybrid Programs */
+  HP rangerStay ::= {dxR1:=0; dyR1 :=0;};
+  HP rangerGo ::= {?true;};
+End.
+
+ProgramVariables
+  Real t;
+  /* poacher position and velocity */
+  Real xP1;
+  Real yP1;
+  Real dxP1;
+  Real dyP1;
+
+  /* ranger position and velocity */
+  Real xR1;
+  Real yR1;
+  Real dxR1;
+  Real dyR1;
+  
+  /* target position and velocity */
+  Real xT1;
+  Real yT1;
+  Real dxT1;
+  Real dyT1;
+End.
+
+Problem
+  (dxT1 = 0 & dyT1 = 0 & killr = capr & killr >= 0 & maxVp >=0 & maxVr >=0 & maxVt >=0 & T>0 & 
+   xR1 = xT1 & yR1 = yT1 & dxR1 = 0 & dyR1 = 0 & dxR1^2 + dyR1^2 <= maxVr^2) /* Initial conditions */
+  ->
+  [
+    /* Ranger gets initial position (& velocity) */
+    /*{xR1 := *; yR1 := *; 
+    dxR1 := *; dyR1 := *; ?(dxR1^2 + dyR1^2 <= maxVr^2);}^@;*/
+    /* Poacher position */
+    xP1 := *; yP1 := *;
+    ?(distancesq(xP1, xT1, yP1, yT1) > (2*maxVp*T+killr)^2);
+    {
+      /* Poacher Control */
+      dxP1 := *; dyP1 := *; ?(dxP1^2 + dyP1^2 <= maxVp^2);
+      /* Dynamics */
+      t := 0;
+      {xP1' = dxP1, yP1' = dyP1, xR1' = dxR1, yR1' = dyR1, xT1' = dxT1, yT1' = dyT1 & 
+          distancesq(xP1, xR1, yP1, yR1) >= capr^2  &  /* poacher caught -> ranger win */
+          distancesq(xP1, xT1, yP1, yT1) >= killr^2 &  /* target caught -> poacher win */
+          t <= T
+      };
+      ?(distancesq(xP1, xR1, yP1, yR1)> capr^2);
+    }*@invariant(distancesq(xP1, xT1, yP1, yT1) > killr^2)
+  ]( /* Safety condition */
+    distancesq(xP1, xT1, yP1, yT1) > killr^2 | /* target never caught */
+    distancesq(xP1, xR1, yP1, yR1) <= capr^2   /* poacher caught */
+    )
+End.
+
+Tactic "starlab-draft1: Proof"
+unfold;
+loop("distancesq(xP1,xT1,yP1,yT1)>killr()^2&xR1=xT1&yR1=yT1", 'R=="[{dxP1:=*;dyP1:=*;?dxP1^2+dyP1^2<=maxVp()^2;t:=0;{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&distancesq(xP1,xR1,yP1,yR1)>=capr()^2&distancesq(xP1,xT1,yP1,yT1)>=killr()^2&t<=T()}?distancesq(xP1,xR1,yP1,yR1)>capr()^2;}*](distancesq(xP1,xT1,yP1,yT1)>killr()^2|distancesq(xP1,xR1,yP1,yR1)<=capr()^2)"); <(
+  "Init":
+    auto,
+  "Post":
+    auto,
+  "Step":
+    unfold;
+    dC("xR1=xT1&yR1=yT1", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&xR1=xT1&yR1=yT1)"); <(
+      "Use":
+        dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T())&xR1=xT1&yR1=yT1}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&xR1=xT1&yR1=yT1)");
+        testb('R=="[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&xR1=xT1&yR1=yT1)");
+        auto,
+      "Show":
+        dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()}](xR1=xT1&yR1=yT1)"); <(
+          "dI Init":
+            auto,
+          "dI Step":
+            auto
+        )
+    )
+)
+End.
+
+End.
