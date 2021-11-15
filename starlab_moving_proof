@@ -1,0 +1,335 @@
+/* Exported from KeYmaera X v4.9.5 */
+
+Theorem "starlab-moving-draft1"
+
+Definitions
+  Real maxX;
+  Real maxY;
+
+  Real maxVp; /* max poacher velocity */
+  Real maxVr; /* max ranger velocity */
+  Real maxVt; /* max target velocity */
+  
+  Real killr; /* how close poacher should be to kill target */
+  Real capr; /* how close ranger should be to catch poacher */
+  Real T; /* ranger shifts */
+  
+  /* functions */
+  Real distancesq(Real x1, Real x2, Real y1, Real y2) = (x2-x1)^2 + (y2-y1)^2;
+  Bool vBound(Real dx, Real dy, Real vbound) <-> dx^2 + dy^2 <= vbound^2;
+  Bool inBorder(Real x, Real y) <-> 0<=x & x<=maxX & 0<=y & y<=maxY;
+  Bool inRangerBorder(Real x, Real y) <-> x >= capr/(2^(1/2)) & y >= capr/(2^(1/2)) & x <= maxX-capr/(2^(1/2)) & y <= maxY-capr/(2^(1/2));
+  Real spaceDiagonal() = (maxX^2 + maxY^2)^(1/2);
+  Real rangerDiagonal() = maxX*2^(1/2) - 2*capr; /* assuming maxX = maxY */
+  Bool poacherDistanceBound(Real x1, Real y1, Real x2, Real y2) <-> distancesq(x1, x2, y1, y2) > (2*maxVp*T+killr)^2;
+    /* want poacher to start far enough away for ranger to initialize strategy */
+  Bool spaceLowerBound(Real xT1, Real yT1) <-> poacherDistanceBound(0, 0, xT1, yT1) | poacherDistanceBound(0, maxY, xT1, yT1) | 
+    poacherDistanceBound(maxX, 0, xT1, yT1) | poacherDistanceBound(maxX, maxY, xT1, yT1);
+  Real nextTarget(Real pos, Real vel) = pos + vel*T;
+  Real spaceToRanger(Real coord, Real max) = capr/(2^(1/2))+coord*(max-capr*2^(1/2))/max;
+  
+  
+  /* Hybrid Programs */
+  /* Predefined Ranger Strategies */
+  HP rangerStay ::= {dxR1:=0; dyR1 :=0;};
+  HP rangerGo ::= {dxR1:= (spaceToRanger(nextTarget(xT1, dxT1), maxX)-xR1)/T; 
+                   dyR1:= (spaceToRanger(nextTarget(yT1, dyT1), maxY)-yR1)/T;};
+
+End.
+
+ProgramVariables
+  Real t;
+  /* poacher position and velocity */
+  Real xP1;
+  Real yP1;
+  Real dxP1;
+  Real dyP1;
+
+  /* ranger position and velocity */
+  Real xR1;
+  Real yR1;
+  Real dxR1;
+  Real dyR1;
+  
+  
+  /* target position and velocity */
+  Real xT1;
+  Real yT1;
+  Real dxT1;
+  Real dyT1;
+End.
+
+Problem
+  /* Initial conditions */
+  (maxX = maxY & inBorder(xR1, yR1) & inBorder(xT1, yT1) & maxX = 1 &
+   xR1 = spaceToRanger(xT1, maxX) & yR1 = spaceToRanger(yT1, maxY) &
+   spaceLowerBound(xT1, yT1) & 
+   killr = 0 & capr >= 0 & maxVp >0 & maxVr >0 & maxVt >0 & T>0 & 
+   inRangerBorder(xR1, yR1) & distancesq(xR1, xT1, yR1, yT1) <= capr^2 & 
+   vBound(dxR1, dyR1, maxVr) & rangerDiagonal()/maxVr <= spaceDiagonal()/maxVt) 
+  ->
+  [
+    /* Ranger gets initial position (& velocity) */
+    /*{xR1 := *; yR1 := *; 
+    dxR1 := *; dyR1 := *; ?(dxR1^2 + dyR1^2 <= maxVr^2);}^@;*/
+    /* Poacher position */
+    xP1 := *; yP1 := *;
+    ?(inBorder(xP1, yP1) & poacherDistanceBound(xP1, yP1, xT1, yT1));
+    {
+      /* Target control */
+      dxT1 := *; dyT1 := *; ?(vBound(dxT1, dyT1, maxVt));
+      /* Ranger control */
+      rangerGo; ?(vBound(dxR1, dyR1, maxVr));
+      /* Poacher Control */
+      dxP1 := *; dyP1 := *; ?(vBound(dxP1, dyP1, maxVp));
+      /* Dynamics */
+      t := 0;
+      {{xP1' = dxP1, yP1' = dyP1, xR1' = dxR1, yR1' = dyR1, xT1' = dxT1, yT1' = dyT1 & 
+          distancesq(xP1, xR1, yP1, yR1) >= capr^2  &  /* poacher caught -> ranger win */
+          distancesq(xP1, xT1, yP1, yT1) >= killr^2 &  /* target caught -> poacher win */
+          t <= T & inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1)
+      } ++ 
+       {xP1' = dxP1, yP1' = dyP1, xR1' = dxR1, yR1' = dyR1, xT1' = dxT1, yT1' = dyT1 & 
+          (distancesq(xP1, xR1, yP1, yR1) <= capr^2  |  /* poacher caught -> ranger win */
+          distancesq(xP1, xT1, yP1, yT1) <= killr^2) &  /* target caught -> poacher win */
+          t <= T & inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1)}};
+      ?(distancesq(xP1, xR1, yP1, yR1)> capr^2);
+    }*@invariant(distancesq(xP1, xT1, yP1, yT1) > killr^2 & distancesq(xR1, xT1, yR1, yT1) <= capr^2 &
+       xR1 = spaceToRanger(xT1, maxX) & yR1 = spaceToRanger(yT1, maxY) &
+       inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1))
+  ]( /* Safety condition */
+    (distancesq(xP1, xT1, yP1, yT1) > killr^2 | /* target never caught */
+    distancesq(xP1, xR1, yP1, yR1) <= capr^2) &  /* poacher caught */
+    inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1)
+    )
+End.
+
+Tactic "starlab-moving-draft1: Proof"
+unfold;
+loop("distancesq(xP1,xT1,yP1,yT1)>killr()^2&distancesq(xR1,xT1,yR1,yT1)<=capr()^2&xR1=spaceToRanger(xT1,maxX())&yR1=spaceToRanger(yT1,maxY())&inBorder(xR1,yR1)&inBorder(xP1,yP1)&inBorder(xT1,yT1)", 'R=="[{dxT1:=*;dyT1:=*;?vBound(dxT1,dyT1,maxVt());rangerGo{|^@|};?vBound(dxR1,dyR1,maxVr());dxP1:=*;dyP1:=*;?vBound(dxP1,dyP1,maxVp());t:=0;{{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&distancesq(xP1,xR1,yP1,yR1)>=capr()^2&distancesq(xP1,xT1,yP1,yT1)>=killr()^2&t<=T()&inBorder(xR1,yR1)&inBorder(xP1,yP1)&inBorder(xT1,yT1)}++{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(distancesq(xP1,xR1,yP1,yR1)<=capr()^2|distancesq(xP1,xT1,yP1,yT1)<=killr()^2)&t<=T()&inBorder(xR1,yR1)&inBorder(xP1,yP1)&inBorder(xT1,yT1)}}?distancesq(xP1,xR1,yP1,yR1)>capr()^2;}*]((distancesq(xP1,xT1,yP1,yT1)>killr()^2|distancesq(xP1,xR1,yP1,yR1)<=capr()^2)&inBorder(xR1,yR1)&inBorder(xP1,yP1)&inBorder(xT1,yT1))"); <(
+  "Init":
+    andR('R=="(xT1-xP1)^2+(yT1-yP1)^2>killr()^2&(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()"); <(
+      "(xT1-xP1)^2+(yT1-yP1)^2>killr()^2":
+        auto using "(xT1-xP1)^2+(yT1-yP1)^2>(2*maxVp()*T()+killr())^2 :: killr()=0 :: maxVp()>0 :: T()>0 :: (xT1-xP1)^2+(yT1-yP1)^2>killr()^2 :: nil",
+      "(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()":
+        andR('R=="(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()"); <(
+          "(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2":
+            auto,
+          "xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()":
+            andR('R=="xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()"); <(
+              "xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()":
+                auto,
+              "yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()":
+                andR('R=="yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()"); <(
+                  "yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()":
+                    auto,
+                  "(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()":
+                    auto
+                )
+            )
+        )
+    ),
+  "Post":
+    auto,
+  "Step":
+    composeb('R=="[dxT1:=*;dyT1:=*;?dxT1^2+dyT1^2<=maxVt()^2;rangerGo{|^@|};?dxR1^2+dyR1^2<=maxVr()^2;dxP1:=*;dyP1:=*;?dxP1^2+dyP1^2<=maxVp()^2;t:=0;{{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&t<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}++{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&t<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}}?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())");
+    unfold;
+    expand "rangerGo";
+    unfold; <(
+      "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())":
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#)");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#)");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#)");
+        unfold;
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#)");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#)");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#)");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&#[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))#");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&#[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))#");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&#[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))#");
+        unfold; <(
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2":
+            testb('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2#");
+            dC("(yT1-yR1)^2+(xT1-xR1)^2<=capr()^2", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->(xT1-xP1)^2+(yT1-yP1)^2>killr()^2)"); <(
+              "Use":
+                dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&(yT1-yR1)^2+(xT1-xR1)^2<=capr()^2}]((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->(xT1-xP1)^2+(yT1-yP1)^2>killr()^2)");
+                unfold;
+                auto using "(xR1-xP1)^2+(yR1-yP1)^2>capr()^2 :: (yT1-yR1)^2+(xT1-xR1)^2<=capr()^2 :: killr()=0 :: (xT1-xP1)^2+(yT1-yP1)^2>killr()^2 :: nil",
+              "Show":
+                dC("yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](yT1-yR1)^2+(xT1-xR1)^2<=capr()^2"); <(
+                  "Use":
+                    dC("xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()}](yT1-yR1)^2+(xT1-xR1)^2<=capr()^2"); <(
+                      "Use":
+                        dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()}](yT1-yR1)^2+(xT1-xR1)^2<=capr()^2");
+                        unfold;
+                        auto using "xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX() :: maxX()=maxY() :: yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY() :: maxX()=1 :: capr()>=0 :: maxVr()>0 :: 0<=xR1 :: xR1<=maxX() :: 0<=xT1 :: T()>0 :: 0<=yR1 :: yR1<=maxY() :: xT1<=maxX() :: 0<=yT1 :: yT1<=maxY() :: dxT1^2+dyT1^2<=maxVt()^2 :: dxR1^2+dyR1^2<=maxVr()^2 :: dxP1^2+dyP1^2<=maxVp()^2 :: (yT1-yR1)^2+(xT1-xR1)^2<=capr()^2 :: nil",
+                      "Show":
+                        dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()}]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()"); <(
+                          "dI Init":
+                            auto,
+                          "dI Step":
+                            unfold;
+                            auto
+                        )
+                    ),
+                  "Show":
+                    dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()"); <(
+                      "dI Init":
+                        auto,
+                      "dI Step":
+                        auto
+                    )
+                )
+            ),
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2":
+            GV('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2#");
+            dC("xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2"); <(
+              "Use":
+                dC("yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()}](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2"); <(
+                  "Use":
+                    dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()}](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2");
+                    unfold;
+                    auto using "yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY() :: maxX()=maxY() :: xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX() :: maxX()=1 :: (xT1-xR1)^2+(yT1-yR1)^2<=capr()^2 :: nil";
+                    auto using "yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY() :: maxX()=maxY() :: xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX() :: maxX()=1 :: capr()>=0 :: 0<=xR1 :: xR1<=maxX() :: 0<=xT1 :: 0<=yR1 :: yR1<=maxY() :: xT1<=maxX() :: 0<=yT1 :: yT1<=maxY() :: (xT1-xR1)^2+(yT1-yR1)^2<=capr()^2 :: nil",
+                  "Show":
+                    dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()}]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()"); <(
+                      "dI Init":
+                        auto,
+                      "dI Step":
+                        auto
+                    )
+                ),
+              "Show":
+                dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()"); <(
+                  "dI Init":
+                    auto,
+                  "dI Step":
+                    auto
+                )
+            ),
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()":
+            GV('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()#");
+            dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()"); <(
+              "dI Init":
+                auto,
+              "dI Step":
+                unfold;
+                auto
+            ),
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()":
+            GV('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()#");
+            dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()"); <(
+              "dI Init":
+                auto,
+              "dI Step":
+                auto
+            ),
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))":
+            unfold;
+            testb('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())#&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))");
+            testb('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())#&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))");
+            testb('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]0<=xT1#&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY()))");
+            testb('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xT1)&#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1<=maxX()&0<=yT1&yT1<=maxY())#)");
+            dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(xR1-xP1)^2+(yR1-yP1)^2>=capr()^2&(xT1-xP1)^2+(yT1-yP1)^2>=killr()^2&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->0<=xT1)&((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->xT1<=maxX()&0<=yT1&yT1<=maxY()))");
+            auto
+        ),
+      "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())":
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xP1)^2+(yT1-yP1)^2>killr()^2&(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()))");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&#[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()))#");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#");
+        boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2&[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2&#[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()))#");
+        unfold; <(
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2":
+            testb('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xP1)^2+(yT1-yP1)^2>killr()^2#");
+            dC("(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->(xT1-xP1)^2+(yT1-yP1)^2>killr()^2)"); <(
+              "Use":
+                dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2}]((xR1-xP1)^2+(yR1-yP1)^2>capr()^2->(xT1-xP1)^2+(yT1-yP1)^2>killr()^2)");
+                unfold;
+                auto using "(xR1-xP1)^2+(yR1-yP1)^2>capr()^2 :: (xT1-xR1)^2+(yT1-yR1)^2<=capr()^2 :: killr()=0 :: capr()>=0 :: 0<=xR1 :: xR1<=maxX() :: 0<=xT1 :: 0<=yR1 :: xT1<=maxX() :: 0<=yT1 :: yT1<=maxY() :: dxT1^2+dyT1^2<=maxVt()^2 :: dxR1^2+dyR1^2<=maxVr()^2 :: (xT1-xP1)^2+(yT1-yP1)^2>killr()^2 :: nil",
+              "Show":
+                dC("yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2"); <(
+                  "Use":
+                    dC("xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()}](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2"); <(
+                      "Use":
+                        dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()}](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2");
+                        unfold;
+                        auto using "xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX() :: maxX()=maxY() :: yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY() :: maxX()=1 :: 0<=T() :: capr()>=0 :: maxVp()>0 :: 0<=xR1 :: maxVr()>0 :: xR1<=maxX() :: 0<=xP1 :: 0<=xT1 :: maxVt()>0 :: 0<=yR1 :: yR1<=maxY() :: xP1<=maxX() :: xT1<=maxX() :: T()>0 :: 0<=yP1 :: yP1<=maxY() :: 0<=yT1 :: yT1<=maxY() :: dxT1^2+dyT1^2<=maxVt()^2 :: dxR1^2+dyR1^2<=maxVr()^2 :: dxP1^2+dyP1^2<=maxVp()^2 :: (xT1-xR1)^2+(yT1-yR1)^2<=capr()^2 :: nil",
+                      "Show":
+                        dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()}]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()"); <(
+                          "dI Init":
+                            auto,
+                          "dI Step":
+                            auto
+                        )
+                    ),
+                  "Show":
+                    dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()"); <(
+                      "dI Init":
+                        auto,
+                      "dI Step":
+                        auto
+                    )
+                )
+            ),
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2":
+            dC("xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2"); <(
+              "Use":
+                dC("yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()", 'R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2"); <(
+                  "Use":
+                    dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX())&yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2");
+                    testb('R=="[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](xT1-xR1)^2+(yT1-yR1)^2<=capr()^2");
+                    implyR('R=="(xR1-xP1)^2+(yR1-yP1)^2>capr()^2->(xT1-xR1)^2+(yT1-yR1)^2<=capr()^2");
+                    unfold;
+                    auto using "yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY() :: maxX()=maxY() :: xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX() :: maxX()=1 :: capr()>=0 :: 0<=xR1 :: xR1<=maxX() :: 0<=xT1 :: 0<=yR1 :: yR1<=maxY() :: xT1<=maxX() :: T()>0 :: 0<=yT1 :: yT1<=maxY() :: dxT1^2+dyT1^2<=maxVt()^2 :: dxR1^2+dyR1^2<=maxVr()^2 :: dxP1^2+dyP1^2<=maxVp()^2 :: (xT1-xR1)^2+(yT1-yR1)^2<=capr()^2 :: nil",
+                  "Show":
+                    dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&(((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())&xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()}]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()"); <(
+                      "dI Init":
+                        auto,
+                      "dI Step":
+                        auto
+                    )
+                ),
+              "Show":
+                dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()"); <(
+                  "dI Init":
+                    auto,
+                  "dI Step":
+                    auto
+                )
+            ),
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()":
+            GV('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()#");
+            dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]xR1=capr()/2^(1/2)+xT1*(maxX()-capr()*2^(1/2))/maxX()"); <(
+              "dI Init":
+                auto,
+              "dI Step":
+                auto
+            ),
+          "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())":
+            boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;](yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())#");
+            unfold;
+            boxAnd('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]([?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()&[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()))");
+            unfold; <(
+              "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()":
+                GV('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]#[?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()#");
+                dIRule('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}]yR1=capr()/2^(1/2)+yT1*(maxY()-capr()*2^(1/2))/maxY()"); <(
+                  "dI Init":
+                    auto,
+                  "dI Step":
+                    unfold;
+                    auto
+                ),
+              "[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())":
+                dW('R=="[{xP1'=dxP1,yP1'=dyP1,xR1'=dxR1,yR1'=dyR1,xT1'=dxT1,yT1'=dyT1&((xR1-xP1)^2+(yR1-yP1)^2<=capr()^2|(xT1-xP1)^2+(yT1-yP1)^2<=killr()^2)&0<=T()&(0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY()}][?(xR1-xP1)^2+(yR1-yP1)^2>capr()^2;]((0<=xR1&xR1<=maxX()&0<=yR1&yR1<=maxY())&(0<=xP1&xP1<=maxX()&0<=yP1&yP1<=maxY())&0<=xT1&xT1<=maxX()&0<=yT1&yT1<=maxY())");
+                auto
+            )
+        )
+    )
+)
+End.
+
+End.
