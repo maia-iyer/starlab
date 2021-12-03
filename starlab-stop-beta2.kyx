@@ -1,0 +1,156 @@
+Constant assumptions:
+maxX > 0 & maxY > 0 & inBorder(xR1, yR1) & inBorder(xT1, yT1) & T > 0 &
+   killr = 0 & capr >= 0 & preyr > 0 & maxVp >0 & maxVr >0 & maxVt >0 & 
+   (rangerDiagonal() - rangerMiniDiagonal())/2 <= preyr/maxVp*maxVr & 
+   (rangerMiniDiagonal())/maxVr <= spaceDiagonal()/maxVt
+
+Loop invariant:
+(distancesq(xP1, xT1, yP1, yT1) > killr^2 & 
+       (tSinceTargetSeenPoacher >= preyr/maxVp -> (xR1 = spaceToMiniRanger(xT1, maxX) & yR1 = spaceToMiniRanger(yT1, maxY))) &
+       (xR1 = ((tSeeingPoacher/(preyr/maxVp))*spaceToRanger(xT1, maxX) + (1-(tSeeingPoacher/(preyr/maxVp)))*spaceToMiniRanger(xT1, maxX))) &
+       (yR1 = ((tSeeingPoacher/(preyr/maxVp))*spaceToRanger(yT1, maxY) + (1-(tSeeingPoacher/(preyr/maxVp)))*spaceToMiniRanger(yT1, maxY))) &
+       (tSeeingPoacher <= preyr/maxVp - tSinceTargetSeenPoacher) & 
+       (0 <= tSeeingPoacher & tSeeingPoacher <= preyr/maxVp) &
+       (0 <= tSinceTargetSeenPoacher & tSinceTargetSeenPoacher <= preyr/maxVp) &
+       (tSinceTargetSeenPoacher >= preyr/maxVp -> !targetSeesPoacher(xP1, yP1, xT1, yT1)) &
+       inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1)
+       & (targetSeesPoacher(xP1, yP1, xT1, yT1)->tSinceTargetSeenPoacher = 0))
+
+
+------------------------------
+
+Theorem "starlab-stop-beta2"
+
+Definitions
+  Real maxX;
+  Real maxY;
+
+  Real maxVp; /* max poacher velocity */
+  Real maxVr; /* max ranger velocity */
+  Real maxVt; /* max target velocity */
+  
+  Real preyr; /* distance prey can react to poacher */
+  Real killr; /* how close poacher should be to kill target */
+  Real capr; /* how close ranger should be to catch poacher */
+  Real T;
+  
+  /* functions */
+  Real distancesq(Real x1, Real x2, Real y1, Real y2) = (x2-x1)^2 + (y2-y1)^2;
+  Bool vBound(Real dx, Real dy, Real vbound) <-> dx^2 + dy^2 <= vbound^2;
+  Bool atBorder(Real x, Real y) <-> 0=x | x=maxX | 0=y | y=maxY;
+  Bool inBorder(Real x, Real y) <-> 0<=x & x<=maxX & 0<=y & y<=maxY;
+  Bool inRangerBorder(Real x, Real y) <-> x >= capr/(2^(1/2)) & y >= capr/(2^(1/2)) & x <= maxX-capr/(2^(1/2)) & y <= maxY-capr/(2^(1/2));
+  Real spaceDiagonal() = (maxX^2 + maxY^2)^(1/2);
+  Real rangerDiagonal() = maxX*2^(1/2) - 2*capr; /* assuming maxX = maxY */
+  Real rangerMiniDiagonal() = maxX*2^(1/2) - 2*(capr+(preyr/maxVp)*maxVr);
+    /* want poacher to start far enough away for ranger to initialize strategy */
+  Real nextTarget(Real pos, Real vel) = pos + vel*T;
+  Real spaceToRanger(Real coord, Real max) = capr/(2^(1/2))+coord*(max-capr*2^(1/2))/max;
+  Real spaceToMiniRanger(Real coord, Real max) = (capr+(preyr/maxVp*maxVr))/(2^(1/2)) + coord*(max-(capr+(preyr/maxVp)*maxVr)*2^(1/2))/max;
+  Bool targetSeesPoacher(Real xP1, Real yP1, Real xT1, Real yT1) <-> distancesq(xP1, xT1, yP1, yT1) <= preyr^2;
+  Bool targetStops(Real dxT1, Real dyT1) <-> dxT1=0 & dyT1=0;
+
+  
+  
+  /* Hybrid Programs */
+  /*HP targetSeesPoacher ::= {?(distancesq(xP1, xT1, yP1, yT1) <= preyr^2);};*/
+  /* Predefined Ranger Strategies */
+  HP rangerStay ::= {dxR1:=0; dyR1 :=0;};
+  HP rangerGo ::= {dxR1:= (spaceToRanger(xT1, maxX)-spaceToMiniRanger(xT1, maxX))/(preyr/maxVp);
+                   dyR1:= (spaceToRanger(yT1, maxY)-spaceToMiniRanger(yT1, maxY))/(preyr/maxVp);
+  };
+  HP rangerMiniGo ::= {dxR1:= (spaceToMiniRanger(nextTarget(xT1, dxT1), maxX)-xR1)/T; 
+                   dyR1:= (spaceToMiniRanger(nextTarget(yT1, dyT1), maxY)-yR1)/T;};
+  HP rangerMiniRetreat ::= {dxR1:= (spaceToMiniRanger(xT1, maxX)-spaceToRanger(xT1, maxX))/(preyr/maxVp);
+                   dyR1:= (spaceToMiniRanger(yT1, maxY)-spaceToRanger(yT1, maxY))/(preyr/maxVp);};
+  HP rangerModGo ::= {{?(!targetSeesPoacher(xP1, yP1, xT1, yT1)); rangerMiniGo;}++{?(targetSeesPoacher(xP1, yP1, xT1, yT1)); rangerGo;}};
+
+End.
+
+ProgramVariables
+  Real t;
+  Real tSinceTargetSeenPoacher;
+  Real tSeeingPoacher;
+  
+  /* poacher position and velocity */
+  Real xP1;
+  Real yP1;
+  Real dxP1;
+  Real dyP1;
+
+  /* ranger position and velocity */
+  Real xR1;
+  Real yR1;
+  Real dxR1;
+  Real dyR1;
+  
+  
+  /* target position and velocity */
+  Real xT1;
+  Real yT1;
+  Real dxT1;
+  Real dyT1;
+End.
+
+Problem
+  /* Initial conditions */
+  (maxX > 0 & maxY > 0 & inBorder(xR1, yR1) & inBorder(xT1, yT1) & 
+   killr = 0 & capr >= 0 & preyr > 0 & maxVp >0 & maxVr >0 & maxVt >0 & 
+   (rangerDiagonal() - rangerMiniDiagonal())/2 <= preyr/maxVp*maxVr & 
+   (rangerMiniDiagonal())/maxVr <= spaceDiagonal()/maxVt & T > 0 & 
+   (distancesq(xP1, xT1, yP1, yT1) > killr^2 & 
+       (tSinceTargetSeenPoacher >= preyr/maxVp -> (xR1 = spaceToMiniRanger(xT1, maxX) & yR1 = spaceToMiniRanger(yT1, maxY))) &
+       (xR1 = ((tSeeingPoacher/(preyr/maxVp))*spaceToRanger(xT1, maxX) + (1-(tSeeingPoacher/(preyr/maxVp)))*spaceToMiniRanger(xT1, maxX))) &
+       (yR1 = ((tSeeingPoacher/(preyr/maxVp))*spaceToRanger(yT1, maxY) + (1-(tSeeingPoacher/(preyr/maxVp)))*spaceToMiniRanger(yT1, maxY))) &
+       (tSeeingPoacher <= preyr/maxVp - tSinceTargetSeenPoacher) & 
+       (0 <= tSeeingPoacher & tSeeingPoacher <= preyr/maxVp) &
+       (0 <= tSinceTargetSeenPoacher & tSinceTargetSeenPoacher <= preyr/maxVp) &
+       (tSinceTargetSeenPoacher >= preyr/maxVp -> !targetSeesPoacher(xP1, yP1, xT1, yT1)) &
+       inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1)
+       & (targetSeesPoacher(xP1, yP1, xT1, yT1)->tSinceTargetSeenPoacher = 0))
+   ) 
+  ->
+  [
+    {
+      {?(tSinceTargetSeenPoacher < preyr/maxVp); {
+          {?(distancesq(xT1, xP1, yT1, yP1) >= preyr^2);
+             /* Target control STOPS when sees poacher */
+             dxT1 := 0; dyT1 := 0; ?(vBound(dxT1, dyT1, maxVt));
+             /* Ranger control */
+             {{?(xR1 = spaceToMiniRanger(xT1, maxX) & yR1 = spaceToMiniRanger(yT1, maxY)); rangerStay;}
+             ++
+             {?(!(xR1 = spaceToMiniRanger(xT1, maxX) & yR1 = spaceToMiniRanger(yT1, maxY))); rangerMiniRetreat;}}
+             ?(vBound(dxR1, dyR1, maxVr));
+             /* Poacher Control */
+             dxP1 := *; dyP1 := *; ?(vBound(dxP1, dyP1, maxVp));
+             /* Dynamics */
+             {{xP1' = dxP1, yP1' = dyP1, xR1' = dxR1, yR1' = dyR1, xT1' = dxT1, yT1' = dyT1, tSeeingPoacher' = -1, tSinceTargetSeenPoacher' = 1 & 
+             distancesq(xP1, xR1, yP1, yR1) >= capr^2  &  /* poacher caught -> ranger win */
+             distancesq(xP1, xT1, yP1, yT1) >= killr^2 &  /* target caught -> poacher win */
+             inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1) & 
+             distancesq(xT1, xP1, yT1, yP1) >= preyr^2 & tSeeingPoacher >= 0
+             }
+             ++
+             {xP1' = dxP1, yP1' = dyP1, xR1' = dxR1, yR1' = dyR1, xT1' = dxT1, yT1' = dyT1, tSinceTargetSeenPoacher' = 1 & 
+             distancesq(xP1, xR1, yP1, yR1) >= capr^2  &  /* poacher caught -> ranger win */
+             distancesq(xP1, xT1, yP1, yT1) >= killr^2 &  /* target caught -> poacher win */
+             inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1) & 
+             distancesq(xT1, xP1, yT1, yP1) >= preyr^2 & tSeeingPoacher <= 0}};
+             ?(distancesq(xP1, xR1, yP1, yR1)> capr^2);
+             /* Update when target sees poacher */
+             {?(targetSeesPoacher(xP1, yP1, xT1, yT1)); tSinceTargetSeenPoacher := 0;++{?(!targetSeesPoacher(xP1, yP1, xT1, yT1));}}
+          }
+      }}
+    }
+  ](distancesq(xP1, xT1, yP1, yT1) > killr^2 & 
+       (tSinceTargetSeenPoacher >= preyr/maxVp -> (xR1 = spaceToMiniRanger(xT1, maxX) & yR1 = spaceToMiniRanger(yT1, maxY))) &
+       (xR1 = ((tSeeingPoacher/(preyr/maxVp))*spaceToRanger(xT1, maxX) + (1-(tSeeingPoacher/(preyr/maxVp)))*spaceToMiniRanger(xT1, maxX))) &
+       (yR1 = ((tSeeingPoacher/(preyr/maxVp))*spaceToRanger(yT1, maxY) + (1-(tSeeingPoacher/(preyr/maxVp)))*spaceToMiniRanger(yT1, maxY))) &
+       (tSeeingPoacher <= preyr/maxVp - tSinceTargetSeenPoacher) & 
+       (0 <= tSeeingPoacher & tSeeingPoacher <= preyr/maxVp) &
+       (0 <= tSinceTargetSeenPoacher & tSinceTargetSeenPoacher <= preyr/maxVp) &
+       (tSinceTargetSeenPoacher >= preyr/maxVp -> !targetSeesPoacher(xP1, yP1, xT1, yT1)) &
+       inBorder(xR1, yR1) & inBorder(xP1, yP1) & inBorder(xT1, yT1)
+       & (targetSeesPoacher(xP1, yP1, xT1, yT1)->tSinceTargetSeenPoacher = 0))
+End.
+End.
