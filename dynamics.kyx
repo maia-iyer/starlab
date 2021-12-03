@@ -10,7 +10,6 @@ Definitions
   
   Real killr; /* how close poacher should be to kill target */
   Real capr; /* how close ranger should be to catch poacher */
-  Real T; /* ranger shifts */
   
   /* functions */
   Real distancesq(Real x1, Real x2, Real y1, Real y2) = (x2-x1)^2 + (y2-y1)^2;
@@ -21,7 +20,6 @@ Definitions
 End.
 
 ProgramVariables
-  Real t;
   /* poacher position and velocity */
   Real xP1;
   Real yP1;
@@ -61,11 +59,9 @@ Problem
       dxP1 := *; dyP1 := *; ?(dxP1^2 + dyP1^2 <= maxVp^2);
 
       /* Dynamics */
-      t := 0;
       {xP1' = dxP1, yP1' = dyP1, xR1' = dxR1, yR1' = dyR1, xT1' = dxT1, yT1' = dyT1 & 
           distancesq(xP1, xR1, yP1, yR1) >= capr^2  &  /* poacher caught -> ranger win */
           distancesq(xP1, xT1, yP1, yT1) >= killr^2 &  /* target caught -> poacher win */
-          t <= T
       };
       ?(distancesq(xP1, xR1, yP1, yR1)> capr^2);
     }*@invariant(distancesq(xP1, xT1, yP1, yT1) > killr^2)
