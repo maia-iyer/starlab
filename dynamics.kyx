@@ -49,7 +49,8 @@ Problem
     {xR1 := *; yR1 := *;}^@;
     /* Poacher position */
     xP1 := *; yP1 := *;
-    ?(distancesq(xP1, xT1, yP1, yT1) > (2*maxVp*T+killr)^2); /* must start far enough away */
+    ?(distancesq(xP1, xT1, yP1, yT1) > killr); /* must start far enough away */
+    ?(distancesq(xP1, xR1, yP1, yR1) > capr); /* must start far enough away */
     {
       /* Target Control */
       dxT1 := *; dyT1 := *; ?(dxT1^2 + dyT1^2 <= maxVt^2);
