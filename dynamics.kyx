@@ -1,16 +1,15 @@
-﻿/* Exported from KeYmaera X v4.9.5 */
+/* Exported from KeYmaera X v4.9.5 */
 /* WARNING:  no proof.  This is a skeleton for modeling dynamics and control in the poacher, ranger, target game.  */
 
 Theorem "starlab-dynamics"
 
-Definitions
+Definitions /* CONSTANTS */
   Real maxVp; /* max poacher velocity */
   Real maxVr; /* max ranger velocity */
   Real maxVt; /* max target velocity */
   
   Real killr; /* how close poacher should be to kill target */
   Real capr; /* how close ranger should be to catch poacher */
-  Real T; /* ranger shifts */
   
   /* functions */
   Real distancesq(Real x1, Real x2, Real y1, Real y2) = (x2-x1)^2 + (y2-y1)^2;
@@ -20,8 +19,7 @@ Definitions
   HP rangerGo ::= {dxR1:=dxT1; dyR1:=dyT1}; /* this strategy assumes ranger observes prey velocity and copies*/
 End.
 
-ProgramVariables
-  Real t;
+ProgramVariables /* GAME STATE */
   /* poacher position and velocity */
   Real xP1;
   Real yP1;
@@ -47,11 +45,12 @@ Problem
   [
     /* Target chooses initial position (& velocity) */
     xT1 := *; yT1 := *;
-    /* Ranger chooses initial position (& velocity) */
+    /* Ranger chooses initial position (& velocity) [NOTE: demonic choice] */
     {xR1 := *; yR1 := *;}^@;
     /* Poacher position */
     xP1 := *; yP1 := *;
-    ?(distancesq(xP1, xT1, yP1, yT1) > (2*maxVp*T+killr)^2); /* must be far enough away */
+    ?(distancesq(xP1, xT1, yP1, yT1) > killr); /* must start far enough away */
+    ?(distancesq(xP1, xR1, yP1, yR1) > capr); /* must start far enough away */
     {
       /* Target Control */
       dxT1 := *; dyT1 := *; ?(dxT1^2 + dyT1^2 <= maxVt^2);
@@ -61,17 +60,15 @@ Problem
       dxP1 := *; dyP1 := *; ?(dxP1^2 + dyP1^2 <= maxVp^2);
 
       /* Dynamics */
-      t := 0;
-      {xP1' = dxP1, yP1' = dyP1, xR1' = dxR1, yR1' = dyR1, xT1' = dxT1, yT1' = dyT1 & 
+      {xP1' = dxP1, yP1' = dyP1, 
+       xR1' = dxR1, yR1' = dyR1, 
+       xT1' = dxT1, yT1' = dyT1 & 
           distancesq(xP1, xR1, yP1, yR1) >= capr^2  &  /* poacher caught -> ranger win */
           distancesq(xP1, xT1, yP1, yT1) >= killr^2 &  /* target caught -> poacher win */
-          t <= T
       };
-      ?(distancesq(xP1, xR1, yP1, yR1)> capr^2);
-    }*@invariant(distancesq(xP1, xT1, yP1, yT1) > killr^2)
+      ?(distancesq(xP1, xR1, yP1, yR1)> capr^2); /* poacher responsible to ensure not caught */
+    }* /* poacher can choose to continue the game */
   ]( /* Safety condition */
-    distancesq(xP1, xT1, yP1, yT1) > killr^2 | /* target never caught */
-    distancesq(xP1, xR1, yP1, yR1) <= capr^2   /* poacher caught */
+    distancesq(xP1, xT1, yP1, yT1) > killr^2 /* target never caught */
     )
 End.
-
